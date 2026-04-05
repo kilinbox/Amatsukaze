@@ -489,6 +489,9 @@ else
                                 }
                             }
                         </fieldset>
+                        @* デブロッキングはKDeblock(Windows専用GPUフィルタ)を使用するため、Windows以外では非表示 *@
+                        @if (_options?.IsServerWindows == true)
+                        {
                         <fieldset class="profile-filter-panel">
                             <legend class="profile-filter-legend">
                                 <label>
@@ -517,6 +520,7 @@ else
                                 </label>
                             </div>
                         </fieldset>
+                        }
                         <fieldset class="profile-filter-panel">
                             <legend class="profile-filter-legend">
                                 <label>
