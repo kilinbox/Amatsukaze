@@ -157,15 +157,51 @@ time_t StreamReformInfo::getFirstFrameTime() const {
 
 // 2. ニコニコ実況コメントを取得したら呼ぶ
 void StreamReformInfo::SetNicoJKList(const std::array<std::vector<NicoJKLine>, NICOJK_MAX>& nicoJKList) {
+    // NicoJKタイムスタンプの基準を判定する。
+    // jikkyoASS: タイムスタンプが「放送日04:00:00 JST基準の経過時間(90kHz単位)」で表現される。
+    // 旧NicoConvASS.exe: タイムスタンプが「放送開始基準(0始まり)の経過時間(90kHz単位)」で表現される。
+    // firstFrameTime_が有効な場合、最初のコメントのタイムスタンプを予想値と照合して判定する。
+    double nicojkBaseOffset = 0.0;
+    if (firstFrameTime_ > 0) {
+        // 放送日04:00:00 JSTのUnixタイムスタンプを計算
+        const time_t JST_OFFSET_SEC = 9 * 3600;   // JST = UTC+9
+        const time_t BROADCAST_DAY_HOUR_SEC = 4 * 3600; // 放送日は04:00 JSTから始まる
+        time_t jst_seconds = firstFrameTime_ + JST_OFFSET_SEC;
+        time_t broadcast_day_04_jst =
+            ((jst_seconds - BROADCAST_DAY_HOUR_SEC) / 86400) * 86400
+            + BROADCAST_DAY_HOUR_SEC - JST_OFFSET_SEC;
+        // 放送開始から04:00 JSTまでのオフセット(90kHz単位)
+        double expected_04jst_offset =
+            (double)(firstFrameTime_ - broadcast_day_04_jst) * MPEG_CLOCK_HZ;
+        // 最初のコメントのタイムスタンプを取得
+        double firstCommentTime = -1.0;
+        for (int t = 0; t < NICOJK_MAX; t++) {
+            if (!nicoJKList[t].empty()) {
+                firstCommentTime = nicoJKList[t].front().start;
+                break;
+            }
+        }
+        // 最初のコメントが予想値から±1時間以内なら04:00 JST基準と判断する
+        const double ONE_HOUR = 3600.0 * MPEG_CLOCK_HZ;
+        if (firstCommentTime >= 0.0 &&
+            std::abs(firstCommentTime - expected_04jst_offset) < ONE_HOUR) {
+            nicojkBaseOffset = expected_04jst_offset;
+            ctx.infoF(_T("[NicoJK] jikkyoASS形式を検出: 04:00 JSTオフセット=%.0f (%.2f秒)"),
+                nicojkBaseOffset, nicojkBaseOffset / MPEG_CLOCK_HZ);
+        } else {
+            ctx.info(_T("[NicoJK] 放送開始基準形式を検出 (旧NicoConvASS互換)"));
+        }
+    }
+
+    double streamStartPTS = dataPTS_.front();
     for (int t = 0; t < NICOJK_MAX; t++) {
         nicoJKList_[t].resize(nicoJKList[t].size());
-        double startTime = dataPTS_.front();
         for (int i = 0; i < (int)nicoJKList[t].size(); i++) {
             auto& src = nicoJKList[t][i];
             auto& dst = nicoJKList_[t][i];
-            // 開始映像オフセットを加算
-            dst.start = src.start + startTime;
-            dst.end = src.end + startTime;
+            // 04:00 JST基準オフセットを差し引き、ストリームPTSに変換する
+            dst.start = src.start - nicojkBaseOffset + streamStartPTS;
+            dst.end   = src.end   - nicojkBaseOffset + streamStartPTS;
             dst.line = src.line;
         }
     }
@@ -1281,16 +1317,11 @@ void StreamReformInfo::genCaptionStream() {
             };
 
         auto containsPTS = [&](double pts) {
-            auto it = std::lower_bound(srcFrames.begin(), srcFrames.end(), pts,
-                [](const FilterSourceFrame& frame, double mid) { return frame.pts < mid; });
-            if (it != srcFrames.end()) {
-                int idx = (int)(it - srcFrames.begin());
-                auto it2 = std::lower_bound(frames.begin(), frames.end(), idx);
-                if (it2 != frames.end() && *it2 == idx) {
-                    return true;
-                }
-            }
-            return false;
+            // srcFrames全体でなく、このファイルのフレームリスト(frames)内で直接PTSを検索する。
+            // srcFrames全体で検索すると、別フォーマットのフレームインデックスがヒットし、
+            // framesに含まれないと判定されてしまう（複数フォーマットが存在する場合のバグ修正）。
+            auto it = std::lower_bound(frames.begin(), frames.end(), pts, pred);
+            return it != frames.end();
             };
 
         double curTime = 0.0;

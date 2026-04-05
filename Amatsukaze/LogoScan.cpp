@@ -41,11 +41,17 @@ float CalcCorrelation5x5(const float* k, const float* Y, int x, int y, int w, fl
 }
 float CalcCorrelation5x5_Debug(const float* k, const float* Y, int x, int y, int w, float* pavg) {
     float f0 = CalcCorrelation5x5(k, Y, x, y, w, pavg);
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+    // x86: AVX版との結果を比較してデバッグ検証
     float f1 = CalcCorrelation5x5_AVX(k, Y, x, y, w, pavg);
     if (f0 != f1) {
         printf("Error!!!\n");
     }
     return f1;
+#else
+    // ARM など x86 以外: AVX 命令がないのでスカラー版のみ使用
+    return f0;
+#endif
 }
 logo::LogoDataParam::LogoDataParam() :
     LogoData(),
@@ -113,8 +119,15 @@ void logo::LogoDataParam::CreateLogoMask(float maskratio) {
     // 相関下限パラメータ
     const float corrLowerLimit = 0.2f;
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+    // x86: 利用可能な SIMD 命令に応じて最適な実装を選択
     pCalcCorrelation5x5 = IsAVX2Available() ? CalcCorrelation5x5_AVX2 : (IsAVXAvailable() ? CalcCorrelation5x5_AVX : CalcCorrelation5x5);
     pRemoveLogoLine = IsAVX2Available() ? removeLogoLineAVX2 : removeLogoLine;
+#else
+    // ARM など x86 以外: AVX 命令がないのでスカラー版のみ使用
+    pCalcCorrelation5x5 = CalcCorrelation5x5;
+    pRemoveLogoLine = removeLogoLine;
+#endif
 
     int YSize = w * h;
     auto memWork = std::unique_ptr<float[]>(new float[YSize * CLEN + 8]);

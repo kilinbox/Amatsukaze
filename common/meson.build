@@ -36,25 +36,36 @@ common_lib = static_library('common',
   install : false,
 )
 
-# AVX2ソースのコンパイル
-common_avx2_lib = static_library('common_avx2',
-  common_avx2_sources,
-  include_directories : common_inc,
-  cpp_args : avx2_args,
-  pic : true,
-  install : false,
-)
+# AVX2/AVX512ソースのコンパイル: x86/x86_64 のみ。ARM では SIMD 命令が存在しないためスキップ
+common_extra_libs = []
+if cpu_family == 'x86_64' or cpu_family == 'x86'
+  common_avx2_lib = static_library('common_avx2',
+    common_avx2_sources,
+    include_directories : common_inc,
+    cpp_args : avx2_args,
+    pic : true,
+    install : false,
+  )
+  common_avx512_lib = static_library('common_avx512',
+    common_avx512_sources,
+    include_directories : common_inc,
+    cpp_args : avx512_args,
+    pic : true,
+    install : false,
+  )
+  common_extra_libs = [common_avx2_lib, common_avx512_lib]
+else
+  message('ARM アーキテクチャを検出: common_avx2/avx512 のビルドをスキップします')
+endif
 
-# AVX512ソースのコンパイル
-common_avx512_lib = static_library('common_avx512',
-  common_avx512_sources,
-  include_directories : common_inc,
-  cpp_args : avx512_args,
-  pic : true,
-  install : false,
-)
+# macOS では iconv を明示的にリンクする必要がある (Linux では glibc に内包)
+iconv_lib_dep = []
+if host_machine.system() == 'darwin'
+  iconv_lib_dep = [meson.get_compiler('cpp').find_library('iconv')]
+endif
 
 common_dep = declare_dependency(
-  link_with : [common_lib, common_avx2_lib, common_avx512_lib],
+  link_with : [common_lib] + common_extra_libs,
+  dependencies : iconv_lib_dep,
   include_directories : common_inc,
 )

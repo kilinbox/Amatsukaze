@@ -496,8 +496,12 @@ AMTFilterSource::AMTFilterSource(AMTContext& ctx, const AMTFilterSource& source)
     script_.Clear();
     auto& sb = script_.Get();
     sb.append("%s", source.getScript().c_str());
-    script_.Apply(env_.get());
-    filter_ = env_->GetVar("last").AsClip();
+    try {
+        script_.Apply(env_.get());
+        filter_ = env_->GetVar("last").AsClip();
+    } catch (const AvisynthError& avserror) {
+        THROWF(AviSynthException, "[コピーコンストラクタ] AvisynthError: %s", avserror.msg);
+    }
 
     // メタデータをコピー（スレッドごとに環境は別）
     outfmt_ = source.outfmt_;
@@ -606,6 +610,11 @@ void AMTFilterSource::InitEnv() {
     //sb.append("SetDeviceOpt(DEV_FREE_THRESHOLD, 1000)\n");
     // Amatsukaze.dllをロード
     sb.append("LoadPlugin(\"%s\")\n", GetModulePath());
+#ifndef _WIN32
+    // macOS/Linux: デフォルトのMTモードをMT_SERIALIZEDに設定することで、
+    // バックグラウンドスレッドからのAvisynthError未捕捉を防ぐ
+    env_->SetFilterMTMode("DEFAULT_MT_MODE", MtMode::MT_SERIALIZED, false);
+#endif
 }
 
 void AMTFilterSource::ReadAllFrames(int pass) {
@@ -637,6 +646,11 @@ void AMTFilterSource::defineMakeSource(
     const StreamReformInfo& reformInfo,
     const tstring& logopath) {
     auto& sb = script_.Get();
+#ifndef _WIN32
+    // macOS/Linux: IsProcess はWindows専用関数のため、常にfalseを返すダミーを定義する。
+    // 既存のavscacheファイルに IsProcess("AvsPmod.exe") が含まれている場合でも動作するようにする。
+    sb.append("function IsProcess(string name) { return false }\n");
+#endif
     sb.append("function MakeSource(bool \"mt\") {\n");
     sb.append("\tmt = default(mt, false)\n");
     sb.append("\tAMTSource(\"%s\")\n", setting_.getTmpAMTSourcePath(key.video));
@@ -718,7 +732,13 @@ bool AMTFilterSource::FilterPass(int pass, int gpuIndex,
     defineMakeSource(key, reformInfo, logopath);
 
     auto& sb = script_.Get();
+#ifdef _WIN32
     sb.append("AMT_SOURCE = MakeSource(true)\n");
+#else
+    // macOS/Linux: MakeSource内のPrefetch(1,4)がTemporalSoftenとの
+    // 組み合わせでスレッドセーフ問題を起こすため、mtをfalseにする
+    sb.append("AMT_SOURCE = MakeSource(false)\n");
+#endif
     sb.append("AMT_TMP = \"%s\"\n", pathToOS(tmppath));
     sb.append("AMT_PASS = %d\n", pass);
     sb.append("AMT_DEV = %d\n", gpuIndex);

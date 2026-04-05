@@ -13,8 +13,16 @@
 #endif
 RGY_DISABLE_WARNING_PUSH
 RGY_DISABLE_WARNING_STR("-Wsign-compare")
+#ifndef _WIN32
+// macOS/Linux: -fvisibility=hidden ビルドでも AvisynthError の RTTI を
+// デフォルト可視性でエクスポートし、ライブラリ間の RTTI ミスマッチを防ぐ
+#pragma GCC visibility push(default)
+#endif
 #include "avisynth.h"
 #pragma comment(lib, "avisynth.lib")
+#ifndef _WIN32
+#pragma GCC visibility pop
+#endif
 RGY_DISABLE_WARNING_POP
 
 #define AVISYNTH_NEO (1)

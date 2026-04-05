@@ -31,14 +31,27 @@ ConvertPixFuncs::ConvertPixFuncs() : convert1(nullptr), convert2(nullptr) {}
 ConvertPixFuncs::ConvertPixFuncs(int dstDepth, int srcDepth) :
     convert1(nullptr),
     convert2(nullptr) {
-    const bool avx2 = ((get_availableSIMD() & RGY_SIMD::AVX2) == RGY_SIMD::AVX2);
     if (srcDepth == 16) {
         if (dstDepth == 10) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+            // x86: AVX2 が利用可能であれば AVX2 版を使用
+            const bool avx2 = ((get_availableSIMD() & RGY_SIMD::AVX2) == RGY_SIMD::AVX2);
             convert1 = avx2 ? &Convert1_16_to_10_AVX2 : &Convert1_16_to_10;
             convert2 = avx2 ? &Convert2_16_to_10_AVX2 : &Convert2_16_to_10;
+#else
+            // ARM など x86 以外: スカラー版のみ使用
+            convert1 = &Convert1_16_to_10;
+            convert2 = &Convert2_16_to_10;
+#endif
         } else if (dstDepth == 12) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+            const bool avx2 = ((get_availableSIMD() & RGY_SIMD::AVX2) == RGY_SIMD::AVX2);
             convert1 = avx2 ? &Convert1_16_to_12_AVX2 : &Convert1_16_to_12;
             convert2 = avx2 ? &Convert2_16_to_12_AVX2 : &Convert2_16_to_12;
+#else
+            convert1 = &Convert1_16_to_12;
+            convert2 = &Convert2_16_to_12;
+#endif
         }
     }
 }

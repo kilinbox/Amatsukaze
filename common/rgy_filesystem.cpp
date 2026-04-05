@@ -340,7 +340,20 @@ std::wstring getExeDirW() {
 }
 #else
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
 std::string getExePathA() {
+    // macOS用の実行ファイルパス取得（_NSGetExecutablePath使用）
+    char prg_path[16384];
+    uint32_t size = sizeof(prg_path);
+    if (_NSGetExecutablePath(prg_path, &size) != 0) {
+        prg_path[0] = '\0';
+    }
+    return prg_path;
+}
+#else
+std::string getExePathA() {
+    // Linux用の実行ファイルパス取得（/proc/self/exe使用）
     char prg_path[16384];
     auto ret = readlink("/proc/self/exe", prg_path, sizeof(prg_path));
     if (ret <= 0) {
@@ -348,6 +361,7 @@ std::string getExePathA() {
     }
     return prg_path;
 }
+#endif // defined(__APPLE__)
 
 std::wstring getExePathW() {
     return char_to_wstring(getExePathA());
@@ -361,14 +375,11 @@ std::string getModulePathA(void *module) {
     if (module == nullptr) {
         return getExePath();
     }
-    // Linux実装 - 共有ライブラリ(.so)のパスを取得
+    // Linux/macOS実装 - 共有ライブラリ(.so/.dylib)のパスを取得
     Dl_info dl_info;
-    // 現在の実行コードのアドレスを使用して.soファイルの情報を取得
-    // この関数ポインタ自体のアドレスを使用
     if (dladdr(module, &dl_info) != 0) {
         if (dl_info.dli_fname) {
-            const char* sopath = dl_info.dli_fname;
-            return sopath;
+            return dl_info.dli_fname;
         }
     }
     return "";

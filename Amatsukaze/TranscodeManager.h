@@ -12,7 +12,10 @@
 #include <string>
 #include <memory>
 #include <limits>
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+// x86/x86_64 専用: SSE4.1 SIMD ヘッダー
 #include <smmintrin.h>
+#endif //#if defined(__x86_64__) || ...
 
 #include "TsSplitter.h"
 #include "Encoder.h"

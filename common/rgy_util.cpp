@@ -58,6 +58,10 @@ unsigned int wstring_to_string(const wchar_t *wstr, std::string& str, uint32_t c
     auto codepage_str_to = codepage_str(codepage);
     if (codepage_str_to == nullptr) codepage_str_to = "UTF-8";
     auto ic = iconv_open(codepage_str_to, "wchar_t"); //to, from
+    if ((int64_t)ic == -1) {
+        fprintf(stderr, "iconv_error: iconv_open(\"%s\", \"wchar_t\") failed\n", codepage_str_to);
+        return 0;
+    }
     auto input_len = (wcslen(wstr)+1) * 4;
     std::vector<char> buf(input_len, 0);
     memcpy(buf.data(), wstr, input_len);

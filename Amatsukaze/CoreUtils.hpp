@@ -17,6 +17,12 @@
 
 #define AMT_MAX_PATH 512
 
+#ifndef _WIN32
+// macOS/Linux: -fvisibility=hidden ビルドでも例外クラスの RTTI を
+// デフォルト可視性でエクスポートし、ライブラリ間 catch を正しく動作させる
+#pragma GCC visibility push(default)
+#endif
+
 struct Exception {
     virtual ~Exception() {}
     virtual const char* message() const {
@@ -46,6 +52,10 @@ DEFINE_EXCEPTION(AviSynthException)
 DEFINE_EXCEPTION(TestException)
 
 #undef DEFINE_EXCEPTION
+
+#ifndef _WIN32
+#pragma GCC visibility pop
+#endif
 
 namespace core_utils {
 // プラットフォームに応じた区切り文字を定義

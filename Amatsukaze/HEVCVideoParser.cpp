@@ -28,6 +28,12 @@
 
 #include "HEVCVideoParser.h"
 
+// FFmpeg 6.0 以降では FF_PROFILE_* が AV_PROFILE_* に改名された。
+// 旧バージョンとの互換性のため、AV_PROFILE_* が未定義の場合は FF_PROFILE_* で補完する。
+#ifndef AV_PROFILE_HEVC_MAIN_10
+#define AV_PROFILE_HEVC_MAIN_10 FF_PROFILE_HEVC_MAIN_10
+#endif
+
 HEVCVideoParser::HEVCVideoParser(AMTContext& ctx) :
     AMTObject(ctx),
     IVideoParser(),
@@ -69,7 +75,7 @@ void HEVCVideoParser::initParser() {
     codecParam->color_primaries = AVCOL_PRI_BT2020;
     codecParam->color_trc = AVCOL_TRC_ARIB_STD_B67;
     codecParam->field_order = AV_FIELD_PROGRESSIVE;
-    codecParam->profile = FF_PROFILE_HEVC_MAIN_10;
+    codecParam->profile = AV_PROFILE_HEVC_MAIN_10;
 
     avcodec_parameters_to_context(m_codecCtxParser.get(), codecParam.get());
 

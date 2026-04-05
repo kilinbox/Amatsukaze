@@ -666,9 +666,18 @@ namespace Amatsukaze.Server.Rest
             app.MapGet("/api/profile-options", () =>
             {
                 var isLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
                 var audioEncoderList = isLinux
                     ? new List<string> { "----", "----", "fdkaac", "opusenc" }
                     : ProfileSettingExtensions.AudioEncoderList.ToList();
+                // Windows専用ハードウェアエンコーダー (QSVEnc/NVEnc/VCEEnc) は非Windows環境では非表示
+                var encoderList = isWindows
+                    ? ProfileSettingExtensions.EncoderList.ToList()
+                    : new List<string> { "x264", "x265", "----", "----", "----", "SVT-AV1" };
+                // KFMデインタレーサーは非Windows環境ではビルド不可のため非表示
+                var deinterlaceAlgorithmList = isWindows
+                    ? ProfileSettingExtensions.DeinterlaceAlgorithmNames.ToList()
+                    : new List<string> { "----", "D3DVP", "QTGMC", "Yadif", "AutoVfr" };
                 var outputOptions = new List<OutputOptionItem>
                 {
                     new OutputOptionItem { Name = "通常", Mask = 1 },
@@ -685,10 +694,10 @@ namespace Amatsukaze.Server.Rest
                 };
                 var options = new ProfileOptions
                 {
-                    EncoderList = ProfileSettingExtensions.EncoderList.ToList(),
+                    EncoderList = encoderList,
                     EncoderParallelList = new List<int> { 1, 2, 3, 4, 5, 6, 7, 8 },
                     SvtAv1BitDepthList = new List<string> { "自動", "8", "10" },
-                    DeinterlaceAlgorithmList = ProfileSettingExtensions.DeinterlaceAlgorithmNames.ToList(),
+                    DeinterlaceAlgorithmList = deinterlaceAlgorithmList,
                     DeblockStrengthList = ProfileSettingExtensions.DeblockStrengthList.ToList(),
                     DeblockQualityList = ProfileSettingExtensions.DeblockQualityList.ToList(),
                     DeblockQualityValues = ProfileSettingExtensions.DeblockQualityListData.ToList(),
@@ -715,7 +724,8 @@ namespace Amatsukaze.Server.Rest
                     SubtitleModeList = ProfileSettingExtensions.SubtitleModeList.ToList(),
                     WhisperModelList = ProfileSettingExtensions.WhisperModelList.ToList(),
                     AudioEncoderList = audioEncoderList,
-                    IsServerLinux = isLinux
+                    IsServerLinux = isLinux,
+                    IsServerWindows = isWindows
                 };
                 return Results.Json(options);
             });

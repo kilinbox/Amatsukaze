@@ -214,7 +214,9 @@ void NicoJK::readASS() {
             file.getline(str);
             headerlines_[i].push_back(str);
 
-            std::regex re("Dialogue: 0,(\\d):(\\d\\d):(\\d\\d)\\.(\\d\\d),(\\d):(\\d\\d):(\\d\\d)\\.(\\d\\d)(.*)");
+            // 時間フィールドは1桁または2桁（jikkyoASSは04:00 JST基準の時刻を使用するため
+            // 夕方以降の放送では10時間以上になり2桁になる）
+            std::regex re("Dialogue: 0,(\\d{1,2}):(\\d\\d):(\\d\\d)\\.(\\d\\d),(\\d{1,2}):(\\d\\d):(\\d\\d)\\.(\\d\\d)(.*)");
 
             while (file.getline(str)) {
                 std::smatch m;

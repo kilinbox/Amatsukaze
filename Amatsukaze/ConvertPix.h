@@ -78,10 +78,13 @@ void Convert1_16_to_12(void* dst, const void* top, const void* bottom, int w, in
 void Convert2_16_to_10(void* dstU, void* dstV, const void* top, const void* bottom, int w, int h, int dpitch, int tpitch, int bpitch);
 void Convert2_16_to_12(void* dstU, void* dstV, const void* top, const void* bottom, int w, int h, int dpitch, int tpitch, int bpitch);
 
+// x86/x86_64 専用: AVX2版のピクセル変換関数 (ARM では実装が存在しない)
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 void Convert1_16_to_10_AVX2(void* dst, const void* top, const void* bottom, int w, int h, int dpitch, int tpitch, int bpitch);
 void Convert1_16_to_12_AVX2(void* dst, const void* top, const void* bottom, int w, int h, int dpitch, int tpitch, int bpitch);
 void Convert2_16_to_10_AVX2(void* dstU, void* dstV, const void* top, const void* bottom, int w, int h, int dpitch, int tpitch, int bpitch);
 void Convert2_16_to_12_AVX2(void* dstU, void* dstV, const void* top, const void* bottom, int w, int h, int dpitch, int tpitch, int bpitch);
+#endif //#if defined(__x86_64__) || ...
 
 struct ConvertPixFuncs {
     decltype(&Convert1_16_to_10) convert1;

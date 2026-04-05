@@ -130,6 +130,7 @@ namespace Amatsukaze.Shared
         public List<string>? WhisperModelList { get; set; }
         public List<string>? AudioEncoderList { get; set; }
         public bool IsServerLinux { get; set; }
+        public bool IsServerWindows { get; set; }
     }
 
     public class AutoSelectOptionsView

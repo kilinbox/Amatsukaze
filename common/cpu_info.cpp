@@ -521,6 +521,104 @@ bool get_cpu_info(cpu_info_t *cpu_info) {
     return true;
 }
 
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+
+// macOS用のget_cpu_info実装（sysctlを使用）
+bool get_cpu_info(cpu_info_t *cpu_info) {
+    memset(cpu_info, 0, sizeof(cpu_info[0]));
+
+    // 物理コア数を取得
+    int physical_cores = 0;
+    size_t len = sizeof(physical_cores);
+    if (sysctlbyname("hw.physicalcpu", &physical_cores, &len, nullptr, 0) != 0 || physical_cores <= 0) {
+        physical_cores = 1;
+    }
+
+    // 論理コア数を取得
+    int logical_cores = 0;
+    len = sizeof(logical_cores);
+    if (sysctlbyname("hw.logicalcpu", &logical_cores, &len, nullptr, 0) != 0 || logical_cores <= 0) {
+        logical_cores = physical_cores;
+    }
+
+    cpu_info->physical_cores = std::min(physical_cores, MAX_CORE_COUNT);
+    cpu_info->logical_cores = logical_cores;
+
+    // 各物理コアを登録（Apple Siliconはハイパースレッディングなし）
+    const int logical_per_physical = (physical_cores > 0) ? (logical_cores / physical_cores) : 1;
+    for (int i = 0; i < cpu_info->physical_cores; i++) {
+        cpu_info->proc_list[i].processor_id = i;
+        cpu_info->proc_list[i].core_id = i;
+        cpu_info->proc_list[i].socket_id = 0;
+        cpu_info->proc_list[i].logical_cores = logical_per_physical;
+        cpu_info->proc_list[i].mask = (size_t)1 << i;
+    }
+
+    // キャッシュライン長の取得
+    size_t linesize = 64;
+    len = sizeof(linesize);
+    sysctlbyname("hw.cachelinesize", &linesize, &len, nullptr, 0);
+
+    // 全コアのマスク（シフト演算のオーバーフローを防ぐ）
+    const size_t all_mask = (cpu_info->physical_cores < (int)(sizeof(size_t) * 8))
+        ? (((size_t)1 << cpu_info->physical_cores) - 1)
+        : ~(size_t)0;
+
+    // L1データキャッシュ（コアごとに個別）
+    size_t l1_size = 0;
+    len = sizeof(l1_size);
+    if (sysctlbyname("hw.l1dcachesize", &l1_size, &len, nullptr, 0) == 0 && l1_size > 0) {
+        for (int i = 0; i < cpu_info->physical_cores && cpu_info->cache_count[0] < MAX_CORE_COUNT; i++) {
+            auto& c = cpu_info->caches[0][cpu_info->cache_count[0]++];
+            c.level = RGYCacheLevel::L1;
+            c.type = RGYCacheType::Data;
+            c.size = static_cast<int>(l1_size);
+            c.linesize = static_cast<int>(linesize);
+            c.associativity = 0;
+            c.mask = cpu_info->proc_list[i].mask;
+        }
+        cpu_info->max_cache_level = 1;
+    }
+
+    // L2キャッシュ（全コア共有として1エントリ登録）
+    size_t l2_size = 0;
+    len = sizeof(l2_size);
+    if (sysctlbyname("hw.l2cachesize", &l2_size, &len, nullptr, 0) == 0 && l2_size > 0
+            && cpu_info->cache_count[1] < MAX_CORE_COUNT) {
+        auto& c = cpu_info->caches[1][cpu_info->cache_count[1]++];
+        c.level = RGYCacheLevel::L2;
+        c.type = RGYCacheType::Unified;
+        c.size = static_cast<int>(l2_size);
+        c.linesize = static_cast<int>(linesize);
+        c.associativity = 0;
+        c.mask = all_mask;
+        cpu_info->max_cache_level = 2;
+    }
+
+    // L3キャッシュ（存在する場合）
+    size_t l3_size = 0;
+    len = sizeof(l3_size);
+    if (sysctlbyname("hw.l3cachesize", &l3_size, &len, nullptr, 0) == 0 && l3_size > 0
+            && cpu_info->cache_count[2] < MAX_CORE_COUNT) {
+        auto& c = cpu_info->caches[2][cpu_info->cache_count[2]++];
+        c.level = RGYCacheLevel::L3;
+        c.type = RGYCacheType::Unified;
+        c.size = static_cast<int>(l3_size);
+        c.linesize = static_cast<int>(linesize);
+        c.associativity = 0;
+        c.mask = all_mask;
+        cpu_info->max_cache_level = 3;
+    }
+
+    // NUMAノード（macOSは通常1ノード）
+    cpu_info->node_count = 1;
+    cpu_info->nodes[0].mask = all_mask;
+
+    getCPUHybridMasks(cpu_info);
+    return true;
+}
+
 #else //#if defined(_WIN32) || defined(_WIN64)
 #include <iostream>
 #include <fstream>
@@ -533,8 +631,8 @@ bool get_cpu_info(cpu_info_t *cpu_info) {
     std::string script_data = std::string(data_begin, data_end);
     inputFile.close();
 
-    std::vector<processor_info_t> processor_list;
-    processor_info_t info = { 0 };
+    std::vector<rgy_processor_info_t> processor_list;
+    rgy_processor_info_t info = { 0 };
     info.processor_id = info.core_id = info.socket_id = -1;
 
     for (auto line : split(script_data, "\n")) {
@@ -578,7 +676,7 @@ bool get_cpu_info(cpu_info_t *cpu_info) {
     //ここまでで論理コアの情報を作った
     //cpu_infoに登録するのは物理コアの情報なので、整理しなおす
     //いったんsocket→core→processorの順でソート
-    std::sort(processor_list.begin(), processor_list.end(), [](const processor_info_t& a, const processor_info_t& b) {
+    std::sort(processor_list.begin(), processor_list.end(), [](const rgy_processor_info_t& a, const rgy_processor_info_t& b) {
         if (a.socket_id != b.socket_id) return a.socket_id < b.socket_id;
         if (a.core_id != b.core_id) return a.core_id < b.core_id;
         return a.processor_id < b.processor_id;
@@ -588,7 +686,7 @@ bool get_cpu_info(cpu_info_t *cpu_info) {
     cpu_info->physical_cores = 0;
     cpu_info->logical_cores = processor_list.size();
 
-    processor_info_t *prevCore = nullptr;
+    rgy_processor_info_t *prevCore = nullptr;
     for (size_t ip = 0; ip < processor_list.size(); ip++) {
         if (prevCore != nullptr
             && prevCore->socket_id == processor_list[ip].socket_id
@@ -742,7 +840,7 @@ bool get_cpu_info(cpu_info_t *cpu_info) {
 #endif //#if defined(_WIN32) || defined(_WIN64)
 
 
-const processor_info_t *get_core_info(const cpu_info_t *cpu_info, RGYCoreType type, int id) {
+const rgy_processor_info_t *get_core_info(const cpu_info_t *cpu_info, RGYCoreType type, int id) {
     switch (type) {
     case RGYCoreType::Physical: return (id < cpu_info->physical_cores) ? &cpu_info->proc_list[id] : nullptr;
     case RGYCoreType::Logical: {

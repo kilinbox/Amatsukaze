@@ -9,6 +9,11 @@
 
 #include <time.h>
 #include <mutex>
+#include <exception>
+#include <cxxabi.h>
+#if !(defined(_WIN32) || defined(_WIN64))
+#include <locale.h>
+#endif
 #include "TranscodeManager.h"
 #include "AmatsukazeTestImpl.h"
 #include "Version.h"
@@ -728,6 +733,46 @@ static int amatsukazeTranscodeMain(AMTContext& ctx, const ConfigWrapper& setting
 }
 
 int RunAmatsukazeCLI(int argc, const tchar* argv[]) {
+#ifndef _WIN32
+    // macOS/Linux: 未捕捉例外のメッセージを表示するためのterminateハンドラ
+    std::set_terminate([]() {
+        // まず実際の例外型名を取得（RTTIミスマッチがあっても型名は取得できる）
+        const std::type_info* ti = abi::__cxa_current_exception_type();
+        if (ti) {
+            int status = 0;
+            char* demangled = abi::__cxa_demangle(ti->name(), nullptr, nullptr, &status);
+            fprintf(stderr, "AMT [error] TERMINATE: exception type = %s\n",
+                demangled ? demangled : ti->name());
+            if (demangled) free(demangled);
+        } else {
+            fprintf(stderr, "AMT [error] TERMINATE: no active exception (type_info null)\n");
+        }
+        // 例外の内容を取得（RTTIが一致する場合のみ取れる）
+        auto eptr = std::current_exception();
+        if (eptr) {
+            try {
+                std::rethrow_exception(eptr);
+            } catch (const AvisynthError& e) {
+                fprintf(stderr, "AMT [error] TERMINATE: AvisynthError msg = %s\n",
+                    e.msg ? e.msg : "(null)");
+            } catch (const Exception& e) {
+                fprintf(stderr, "AMT [error] TERMINATE: Exception msg = %s\n", e.message());
+            } catch (const std::exception& e) {
+                fprintf(stderr, "AMT [error] TERMINATE: std::exception what = %s\n", e.what());
+            } catch (...) {
+                fprintf(stderr, "AMT [error] TERMINATE: (RTTI mismatch or non-std type)\n");
+            }
+        }
+        fflush(stderr);
+        std::abort();
+    });
+    // macOS/Linux: LC_CTYPE を環境変数から設定する。
+    // macOS の libc (FreeBSD 由来) では C ロケールのまま vswprintf に %ls で非 ASCII の
+    // wchar_t を渡すと -1 が返り、StringBuilderW::append が日本語テキストを無音でドロップ
+    // する問題がある。LC_CTYPE のみ変更することで %ls の変換を修正しつつ、LC_NUMERIC は
+    // "C" のまま保持して数値フォーマット (小数点など) への影響を避ける。
+    setlocale(LC_CTYPE, "");
+#endif
     try {
         printCopyright();
 

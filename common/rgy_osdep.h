@@ -298,6 +298,7 @@ static pthread_t GetCurrentThread() {
 }
 
 static size_t SetProcessAffinityMask(pid_t process, size_t mask) {
+#ifdef __linux__
     cpu_set_t cpuset_org;
     CPU_ZERO(&cpuset_org);
     sched_getaffinity(process, sizeof(cpu_set_t), &cpuset_org);
@@ -316,9 +317,14 @@ static size_t SetProcessAffinityMask(pid_t process, size_t mask) {
     }
     sched_setaffinity(process, sizeof(cpu_set_t), &cpuset);
     return mask_org;
+#else
+    // macOSにはCPUアフィニティ設定APIが存在しないため、何もしない
+    return 0;
+#endif
 }
 
 static size_t SetThreadAffinityMask(pthread_t thread, size_t mask) {
+#ifdef __linux__
     cpu_set_t cpuset_org;
     CPU_ZERO(&cpuset_org);
     pthread_getaffinity_np(thread, sizeof(cpu_set_t), &cpuset_org);
@@ -337,10 +343,19 @@ static size_t SetThreadAffinityMask(pthread_t thread, size_t mask) {
     }
     pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
     return mask_org;
+#else
+    // macOSにはスレッドアフィニティ設定APIが存在しないため、何もしない
+    return 0;
+#endif
 }
 
 static bool RGYThreadStillActive(pthread_t thread) {
+#ifdef __linux__
     return pthread_tryjoin_np(thread, nullptr) != 0;
+#else
+    // macOSにはpthread_tryjoin_npがないため、pthread_killでスレッドの存在を確認する
+    return pthread_kill(thread, 0) == 0;
+#endif
 }
 
 enum {

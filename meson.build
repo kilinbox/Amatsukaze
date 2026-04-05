@@ -13,12 +13,24 @@ if meson.get_compiler('cpp').get_id() == 'gcc' or meson.get_compiler('cpp').get_
 endif
 
 # SIMD 拡張命令セット用のコンパイルフラグ
-sse2_args = cpp_args + ['-msse2']
-ssse3_args = cpp_args + ['-mssse3']
-sse41_args = cpp_args + ['-msse4.1']
-avx_args = cpp_args + ['-mavx', '-mpopcnt']
-avx2_args = cpp_args + ['-mavx2', '-mfma', '-mpopcnt', '-mbmi', '-mbmi2']
-avx512_args = cpp_args + ['-mavx512f', '-mavx512bw', '-mpopcnt', '-mbmi', '-mbmi2']
+# x86/x86_64 専用。ARM (aarch64) では AVX/SSE 命令は存在しないため空フラグを使用する
+cpu_family = host_machine.cpu_family()
+if cpu_family == 'x86_64' or cpu_family == 'x86'
+  sse2_args   = cpp_args + ['-msse2']
+  ssse3_args  = cpp_args + ['-mssse3']
+  sse41_args  = cpp_args + ['-msse4.1']
+  avx_args    = cpp_args + ['-mavx', '-mpopcnt']
+  avx2_args   = cpp_args + ['-mavx2', '-mfma', '-mpopcnt', '-mbmi', '-mbmi2']
+  avx512_args = cpp_args + ['-mavx512f', '-mavx512bw', '-mpopcnt', '-mbmi', '-mbmi2']
+else
+  # ARM 等: SIMD 固有フラグなし（ソースも後続 subdir でスキップ）
+  sse2_args   = cpp_args
+  ssse3_args  = cpp_args
+  sse41_args  = cpp_args
+  avx_args    = cpp_args
+  avx2_args   = cpp_args
+  avx512_args = cpp_args
+endif
 
 # 依存ライブラリ
 ffmpeg_dep = [

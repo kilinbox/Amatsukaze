@@ -173,8 +173,35 @@ tstring getOSVersion() {
 #else //#if defined(_WIN32) || defined(_WIN64)
 
 #include <sys/utsname.h>
+#ifdef __linux__
 #include <sys/sysinfo.h>
+#endif //#ifdef __linux__
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#include <mach/mach.h>
+#endif //#ifdef __APPLE__
 
+#ifdef __APPLE__
+tstring getOSVersion() {
+    // macOS: sw_vers コマンドでバージョン情報を取得
+    std::string str = "macOS";
+    FILE *fp = popen("sw_vers -productVersion", "r");
+    if (fp != NULL) {
+        char buffer[256] = "";
+        if (fgets(buffer, _countof(buffer), fp) != NULL) {
+            str += " ";
+            str += trim(std::string(buffer), " \t\n\r");
+        }
+        pclose(fp);
+    }
+    struct utsname buf;
+    uname(&buf);
+    str += " (";
+    str += buf.release; // Darwin カーネルバージョン
+    str += ")";
+    return char_to_tstring(str);
+}
+#else //#ifdef __APPLE__
 tstring getOSVersion() {
     std::string str = "";
     FILE *fp = fopen("/etc/os-release", "r");
@@ -226,6 +253,7 @@ tstring getOSVersion() {
     str += ")";
     return char_to_tstring(trim(str));
 }
+#endif //#ifdef __APPLE__
 #endif //#if defined(_WIN32) || defined(_WIN64)
 
 BOOL rgy_is_64bit_os() {
@@ -251,6 +279,21 @@ uint64_t getPhysicalRamSize(uint64_t *ramUsed) {
         *ramUsed = msex.ullTotalPhys - msex.ullAvailPhys;
     }
     return msex.ullTotalPhys;
+#elif defined(__APPLE__)
+    // macOS: sysctl で物理メモリ総量を、Mach API で使用量を取得
+    uint64_t totalRam = 0;
+    size_t len = sizeof(totalRam);
+    sysctlbyname("hw.memsize", &totalRam, &len, NULL, 0);
+    if (NULL != ramUsed) {
+        vm_size_t pageSize = 0;
+        mach_port_t hostPort = mach_host_self();
+        host_page_size(hostPort, &pageSize);
+        vm_statistics64_data_t vmStats;
+        mach_msg_type_number_t infoCount = HOST_VM_INFO64_COUNT;
+        host_statistics64(hostPort, HOST_VM_INFO64, (host_info64_t)&vmStats, &infoCount);
+        *ramUsed = (uint64_t)(vmStats.active_count + vmStats.inactive_count + vmStats.wire_count) * pageSize;
+    }
+    return totalRam;
 #else //#if defined(_WIN32) || defined(_WIN64)
     struct sysinfo info;
     sysinfo(&info);

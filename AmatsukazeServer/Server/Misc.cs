@@ -1410,47 +1410,77 @@ namespace Amatsukaze.Server
                 int videoOutPass = 0;
                 if (filter.DeinterlaceAlgorithm == DeinterlaceAlgorithm.D3DVP)
                 {
-                    var device = GetGPUString(filter.D3dvpGpu);
-                    sb.AppendLine("AMT_SOURCE.D3DVP(" + ((device != null) ? "device=\"" + device + "\"" : "") + ")");
-                    if (filter.EnableCUDA)
+                    if (Util.IsServerWindows())
                     {
-                        sb.AppendLine("OnCPU(2)");
+                        var device = GetGPUString(filter.D3dvpGpu);
+                        sb.AppendLine("AMT_SOURCE.D3DVP(" + ((device != null) ? "device=\"" + device + "\"" : "") + ")");
+                        if (filter.EnableCUDA)
+                        {
+                            sb.AppendLine("OnCPU(2)");
+                        }
+                    }
+                    else
+                    {
+                        // macOS/Linux: D3DVP はWindows/DirectX専用のため、Yadifmod2(60fps)で代替
+                        sb.AppendLine("AMT_SOURCE.Yadifmod2(mode=1) # D3DVPの代替（macOS/Linux）");
                     }
                 }
                 else if (filter.DeinterlaceAlgorithm == DeinterlaceAlgorithm.QTGMC)
                 {
-                    var preset = GetQTGMCPreseet(filter.QtgmcPreset);
-                    if(preset != null)
+                    if (Util.IsServerWindows())
                     {
-                        preset = ", preset=\"" + preset + "\"";
-                    }
-                    sb.AppendLine("dsrc.KFMDeint(mode=1" + preset + ", ucf=false, nr=false" +
-                        ", cuda=" + (filter.EnableCUDA ? "true" : "false") + ")");
-                }
-                else if (filter.DeinterlaceAlgorithm == DeinterlaceAlgorithm.KFM)
-                {
-                    if (filter.KfmFps == FilterFPS.VFR || filter.KfmFps == FilterFPS.VFR30)
-                    {
-                        // VFR
-                        sb.AppendLine("pass = Select(AMT_PASS, 1, 2, 3)");
-                        sb.AppendLine("AMT_PRE_PROC = (AMT_PASS < 2)");
-                        videoOutPass = 2;
+                        var preset = GetQTGMCPreseet(filter.QtgmcPreset);
+                        if(preset != null)
+                        {
+                            preset = ", preset=\"" + preset + "\"";
+                        }
+                        sb.AppendLine("dsrc.KFMDeint(mode=1" + preset + ", ucf=false, nr=false" +
+                            ", cuda=" + (filter.EnableCUDA ? "true" : "false") + ")");
                     }
                     else
                     {
-                        sb.AppendLine("pass = Select(AMT_PASS, 1, 3)");
-                        sb.AppendLine("AMT_PRE_PROC = (AMT_PASS < 1)");
-                        videoOutPass = 1;
+                        // macOS/Linux: KFMDeint はWindows専用のため、Yadifmod2(60fps)で代替
+                        sb.AppendLine("AMT_SOURCE.Yadifmod2(mode=1) # QTGMCの代替（macOS/Linux）");
                     }
-                    sb.AppendLine("dsrc.KFMDeint(mode=" + ((filter.KfmFps == FilterFPS.CFR24) ? 2 : 4) +
-                        ", pass=pass" +
-                        ", ucf=" + (filter.KfmEnableUcf ? "true" : "false") +
-                        ", nr=" + (filter.KfmEnableNr ? "true" : "false") +
-                        ", svp=" + ((filter.KfmFps == FilterFPS.SVP) ? "true" : "false") +
-                        ", thswitch=" + ((filter.KfmFps == FilterFPS.VFR30) ? "-1" : "3") +
-                        ", cuda=" + (filter.EnableCUDA ? "true" : "false") +
-                        ", is120=" + filter.KfmVfr120fps +
-                        ", dev=AMT_DEV, filepath=AMT_TMP)");
+                }
+                else if (filter.DeinterlaceAlgorithm == DeinterlaceAlgorithm.KFM)
+                {
+                    if (Util.IsServerWindows())
+                    {
+                        if (filter.KfmFps == FilterFPS.VFR || filter.KfmFps == FilterFPS.VFR30)
+                        {
+                            // VFR
+                            sb.AppendLine("pass = Select(AMT_PASS, 1, 2, 3)");
+                            sb.AppendLine("AMT_PRE_PROC = (AMT_PASS < 2)");
+                            videoOutPass = 2;
+                        }
+                        else
+                        {
+                            sb.AppendLine("pass = Select(AMT_PASS, 1, 3)");
+                            sb.AppendLine("AMT_PRE_PROC = (AMT_PASS < 1)");
+                            videoOutPass = 1;
+                        }
+                        sb.AppendLine("dsrc.KFMDeint(mode=" + ((filter.KfmFps == FilterFPS.CFR24) ? 2 : 4) +
+                            ", pass=pass" +
+                            ", ucf=" + (filter.KfmEnableUcf ? "true" : "false") +
+                            ", nr=" + (filter.KfmEnableNr ? "true" : "false") +
+                            ", svp=" + ((filter.KfmFps == FilterFPS.SVP) ? "true" : "false") +
+                            ", thswitch=" + ((filter.KfmFps == FilterFPS.VFR30) ? "-1" : "3") +
+                            ", cuda=" + (filter.EnableCUDA ? "true" : "false") +
+                            ", is120=" + filter.KfmVfr120fps +
+                            ", dev=AMT_DEV, filepath=AMT_TMP)");
+                    }
+                    else
+                    {
+                        // macOS/Linux: KFMDeint はWindows専用のため、Yadifmod2で代替
+                        // fps設定に応じてモードを選択（VFR系はCFR60にフォールバック）
+                        if (filter.KfmFps == FilterFPS.CFR24)
+                            sb.AppendLine("AMT_SOURCE.Yadifmod2(mode=0).TDecimate(mode=1) # KFM CFR24の代替（macOS/Linux）");
+                        else if (filter.KfmFps == FilterFPS.CFR30)
+                            sb.AppendLine("AMT_SOURCE.Yadifmod2(mode=0) # KFM CFR30の代替（macOS/Linux）");
+                        else
+                            sb.AppendLine("AMT_SOURCE.Yadifmod2(mode=1) # KFM の代替（macOS/Linux）");
+                    }
                 }
                 else if(filter.DeinterlaceAlgorithm == DeinterlaceAlgorithm.Yadif)
                 {
@@ -1556,25 +1586,54 @@ namespace Amatsukaze.Server
                     }
                     if (filter.EnableTemporalNR)
                     {
-                        sb.AppendLine("KTemporalNR(3, 1)");
+                        if (Util.IsServerWindows())
+                        {
+                            sb.AppendLine("KTemporalNR(3, 1)");
+                        }
+                        else
+                        {
+                            // macOS/Linux: KTemporalNRはWindows専用のため、AviSynth+組み込みのTemporalSoftenで代替
+                            sb.AppendLine("TemporalSoften(3, 4, 8) # KTemporalNRの代替（macOS/Linux）");
+                        }
                     }
                     if (filter.EnableDeband)
                     {
-                        sb.AppendLine("KDeband(25, 1, 2, true)");
+                        if (Util.IsServerWindows())
+                        {
+                            sb.AppendLine("KDeband(25, 1, 2, true)");
+                        }
+                        // macOS/Linux: KDebandはWindows専用のため、スキップ（組み込み代替フィルタなし）
                     }
                     if (filter.EnableEdgeLevel)
                     {
-                        sb.AppendLine("KEdgeLevel(16, 10, 2)");
+                        if (Util.IsServerWindows())
+                        {
+                            sb.AppendLine("KEdgeLevel(16, 10, 2)");
+                        }
+                        else
+                        {
+                            // macOS/Linux: KEdgeLevelはWindows専用のため、AviSynth+組み込みのSharpenで代替
+                            sb.AppendLine("Sharpen(0.3) # KEdgeLevelの代替（macOS/Linux）");
+                        }
                     }
                     sb.AppendLine("ConvertBits(" + (overrideSvtAv1BitDepth ? svtAv1BitDepth : 10) + ", dither=0)");
-                    sb.AppendLine("if(IsProcess(\"AvsPmod.exe\")) { ConvertBits(8, dither=0) }");
+                    if (Util.IsServerWindows())
+                        // AvsPmod.exe はWindows専用プレビューツール。macOS/Linuxでは IsProcess 関数が存在しないためスキップ
+                        sb.AppendLine("if(IsProcess(\"AvsPmod.exe\")) { ConvertBits(8, dither=0) }");
                 }
                 else if (overrideSvtAv1BitDepth)
                 {
                     // ポストプロセスは有効だが ConvertBits(10) が出ない場合は末尾に挿入
                     sb.AppendLine("ConvertBits(" + svtAv1BitDepth + ")");
                 }
-                sb.AppendLine(filter.EnableCUDA ? "OnCUDA(2, AMT_DEV)" : "Prefetch(4)");
+                // macOS/Linux: Prefetchはバックグラウンドスレッドを起動するため、
+                // TemporalSoftenなどのフィルタがAvisynthErrorをスローした場合に
+                // スレッド境界を越えて例外が伝播できずプロセスがterminateする。
+                // そのためmacOS/LinuxではPrefetchを使用しない。
+                if (filter.EnableCUDA)
+                    sb.AppendLine("OnCUDA(2, AMT_DEV)");
+                else if (Util.IsServerWindows())
+                    sb.AppendLine("Prefetch(4)");
             }
             else if (overrideSvtAv1BitDepth)
             {

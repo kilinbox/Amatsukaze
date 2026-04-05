@@ -2476,14 +2476,6 @@ namespace Amatsukaze.Server
                     }
                 }
 
-                if (profile.EnableNicoJK)
-                {
-                    if (string.IsNullOrEmpty(setting.NicoConvASSPath))
-                    {
-                        throw new ArgumentException("NicoConvASSパスが設定されていません");
-                    }
-                }
-
                 if (profile.EnableRename)
                 {
                     if (string.IsNullOrEmpty(setting.SCRenamePath))
@@ -2502,14 +2494,6 @@ namespace Amatsukaze.Server
                         throw new ArgumentException("リネームフォーマットが設定されていません");
                     }
                 }
-                if (profile.EnableNicoJK)
-                {
-                    if (!Util.IsServerWindows())
-                    {
-                        profile.EnableNicoJK = false;
-                    }
-                }
-
                 if(profile.FilterOption == FilterOption.Setting &&
                     profile.FilterSetting.EnableDeinterlace &&
                     profile.FilterSetting.DeinterlaceAlgorithm == DeinterlaceAlgorithm.AutoVfr)

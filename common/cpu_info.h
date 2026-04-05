@@ -75,13 +75,14 @@ typedef struct cache_info_t {
     size_t mask;
 } cache_info_t;
 
+// macOS の <mach/processor_info.h> に同名の typedef があるため、プロジェクト独自の名前を使用する
 typedef struct {
     int processor_id;   // プロセッサID
     int core_id;        // コアID
     int socket_id;      // ソケットID
     int logical_cores;  // 論理コア数
     size_t mask;        // 対応する物理コアのマスク
-} processor_info_t;     // 物理コアの情報
+} rgy_processor_info_t;     // 物理コアの情報
 
 typedef struct {
     int node_count;           // ノード数
@@ -93,7 +94,7 @@ typedef struct {
     int max_cache_level; // キャッシュの最大レベル
     int cache_count[MAX_CACHE_LEVEL];       // 各階層のキャッシュの数
     cache_info_t caches[MAX_CACHE_LEVEL][MAX_CORE_COUNT]; // 各階層のキャッシュの情報
-    processor_info_t proc_list[MAX_CORE_COUNT]; // 物理コアの情報
+    rgy_processor_info_t proc_list[MAX_CORE_COUNT]; // 物理コアの情報
     size_t maskCoreP;  // Performanceコアのマスク
     size_t maskCoreE;  // Efficiencyコアのマスク
     size_t maskSystem; // システム全体のマスク

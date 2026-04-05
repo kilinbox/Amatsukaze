@@ -511,12 +511,13 @@ int RGYAnonymousPipe::create(bool inheritReadHandle, bool inheritWriteHandle, ui
     return 0;
 #else
     int fds[2] = { 0, 0 };
-#if defined(O_CLOEXEC)
-    // まず両端に close-on-exec を付けて作成
+#if defined(__linux__) && defined(O_CLOEXEC)
+    // Linux: pipe2 で atomic に close-on-exec を付けて作成
     if (pipe2(fds, O_CLOEXEC) != 0) {
         return 1;
     }
 #else
+    // macOS 等: pipe2 が存在しないため pipe + fcntl で代替
     if (pipe(fds) != 0) {
         return 1;
     }

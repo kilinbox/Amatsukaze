@@ -61,7 +61,10 @@ else
                     <select @onchange="OnEncoderChanged">
                         @foreach (var item in GetIndexOptions(_options?.EncoderList, GetEncoderIndex()))
                         {
-                            <option value="@item.Value" selected="@item.Selected">@item.Label</option>
+                            @if (item.Label != "----")
+                            {
+                                <option value="@item.Value" selected="@item.Selected">@item.Label</option>
+                            }
                         }
                     </select>
                 </td>
@@ -361,7 +364,10 @@ else
                                 <select style="margin-left: 6px;" @onchange="OnDeinterlaceChanged" disabled="@(!GetFilterBool("EnableDeinterlace"))">
                                     @foreach (var item in GetIndexOptions(_options?.DeinterlaceAlgorithmList, GetDeinterlaceIndex()))
                                     {
-                                        <option value="@item.Value" selected="@item.Selected">@item.Label</option>
+                                        @if (item.Label != "----")
+                                        {
+                                            <option value="@item.Value" selected="@item.Selected">@item.Label</option>
+                                        }
                                     }
                                 </select>
                             </div>
@@ -532,11 +538,14 @@ else
                             時間軸安定化
                         </label>
                         <br />
+                        @if (_options?.IsServerWindows == true)
+                        {
                         <label>
                             <input type="checkbox" checked="@GetFilterBool("EnableDeband")" @onchange="@(e => OnFilterBoolChanged(e, "EnableDeband"))" />
                             バンディング低減
                         </label>
                         <br />
+                        }
                         <label>
                             <input type="checkbox" checked="@GetFilterBool("EnableEdgeLevel")" @onchange="@(e => OnFilterBoolChanged(e, "EnableEdgeLevel"))" />
                             エッジ強調（アニメ用）
@@ -668,13 +677,13 @@ else
                         <td>
                             <div>
                                 <strong>1280x720</strong>
-                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetBoolValue("NicoJKFormat720S")" @onchange="@(e => OnBoolChanged(e, "NicoJKFormat720S"))" />通常</label>
-                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetBoolValue("NicoJKFormat720T")" @onchange="@(e => OnBoolChanged(e, "NicoJKFormat720T"))" />半透明</label>
+                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetNicoJKFormatValue(0)" @onchange="@(e => OnNicoJKFormatChanged(e, 0))" />通常</label>
+                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetNicoJKFormatValue(1)" @onchange="@(e => OnNicoJKFormatChanged(e, 1))" />半透明</label>
                             </div>
                             <div style="margin-top: 6px;">
                                 <strong>1920x1080</strong>
-                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetBoolValue("NicoJKFormat1080S")" @onchange="@(e => OnBoolChanged(e, "NicoJKFormat1080S"))" />通常</label>
-                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetBoolValue("NicoJKFormat1080T")" @onchange="@(e => OnBoolChanged(e, "NicoJKFormat1080T"))" />半透明</label>
+                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetNicoJKFormatValue(2)" @onchange="@(e => OnNicoJKFormatChanged(e, 2))" />通常</label>
+                                <label style="margin-left: 8px;"><input type="checkbox" checked="@GetNicoJKFormatValue(3)" @onchange="@(e => OnNicoJKFormatChanged(e, 3))" />半透明</label>
                             </div>
                         </td>
                     </tr>
@@ -1203,6 +1212,55 @@ else
     private bool GetMoveInputFileValue()
     {
         return !GetBoolValue("DisableMoveInputFile");
+    }
+
+    // NicoJKFormats は bool[] 配列のため、インデックスで読み書きする
+    private bool GetNicoJKFormatValue(int index)
+    {
+        var arr = GetNode("NicoJKFormats") as JsonArray;
+        if (arr == null || index >= arr.Count)
+        {
+            return false;
+        }
+        return TryGetBoolFromNode(arr[index], out var v) && v;
+    }
+
+    private void SetNicoJKFormatValue(int index, bool value)
+    {
+        var obj = EnsureDraftNode();
+        if (obj == null) return;
+        // 既存の配列キー名を探す（大文字小文字を問わず）
+        string key = "NicoJKFormats";
+        foreach (var kv in obj)
+        {
+            if (string.Equals(kv.Key, "NicoJKFormats", StringComparison.OrdinalIgnoreCase))
+            {
+                key = kv.Key;
+                break;
+            }
+        }
+        var arr = obj[key] as JsonArray;
+        if (arr == null)
+        {
+            // 配列が存在しない場合は4要素のfalse配列を作成
+            arr = new JsonArray(false, false, false, false);
+            obj[key] = arr;
+        }
+        // 配列要素の更新（JsonArrayは直接置換が必要）
+        while (arr.Count <= index)
+        {
+            arr.Add(false);
+        }
+        arr[index] = JsonValue.Create(value);
+        // SetNodeValue と同様に _draftJson を同期する（ApplyAsync はこれを使って送信する）
+        _draftJson = obj.ToJsonString();
+    }
+
+    private void OnNicoJKFormatChanged(ChangeEventArgs e, int index)
+    {
+        var value = e.Value is bool b && b;
+        SetNicoJKFormatValue(index, value);
+        _isDirty = true;
     }
 
     private void OnStringChanged(ChangeEventArgs e, string name)

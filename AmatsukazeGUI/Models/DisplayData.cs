@@ -2250,7 +2250,15 @@ namespace Amatsukaze.Models
         #endregion
 
         public string[] EncoderList {
-            get { return Server.ProfileSettingExtensions.EncoderList; }
+            get {
+                if (Model?.Setting?.IsServerLinux ?? false) {
+                    // IsServerLinux はUnix系(macOSを含む)の場合trueになる
+                    // Windows専用ハードウェアエンコーダー(QSVEnc/NVEnc/VCEEnc)を非表示にする
+                    return new string[] { "x264", "x265", "----", "----", "----", "SVT-AV1" };
+                } else {
+                    return Server.ProfileSettingExtensions.EncoderList;
+                }
+            }
         }
         public string[] Mpeg2DecoderList {
             get { return Server.ProfileSettingExtensions.Mpeg2DecoderList; }
@@ -2842,6 +2850,7 @@ namespace Amatsukaze.Models
                 _isServerLinux = value;
                 RaisePropertyChanged();
                 RaisePropertyChanged("AudioEncoderList");
+                RaisePropertyChanged("EncoderList");
             }
         }
         #endregion
